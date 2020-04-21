@@ -1,18 +1,27 @@
-from .docker import (
-    Docker
-)
-
-
 class BackendMapper(object):
 
     parameters = {}
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         self.parameters = kwargs
 
-    def __call__(self, backend, parent=None):
-        return self._clients[backend.__class__](
-            backend=backend,
+    def __call__(self, platform, parent=None):
+        return self._clients[platform.__class__](
+            platform=platform,
             **self.parameters,
             parent=parent
         )
+
+def Backends(platform):
+    """
+    Given a string, return a Backend
+    """
+    from .docker import Docker
+    from .singularity import Singularity
+
+    return(
+        {
+            'docker': Docker,
+            'singularity': Singularity
+        }[platform]()
+    )

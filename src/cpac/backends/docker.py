@@ -13,7 +13,7 @@ import pwd
 from base64 import b64decode, b64encode
 from docker.types import Mount
 from ..utils import string_types
-from .backend import Backend, Result, FileResult
+from .platform import Backend, Result, FileResult
 
 from tornado import httpclient
 
@@ -35,45 +35,6 @@ class Docker(Backend):
         else:
             volumes[local] = [b]
         return(volumes)
-
-    def _set_bindings(self, **kwargs):
-        tag = kwargs.get('tag', None)
-        tag = tag if isinstance(tag, str) else 'latest'
-
-        temp_dir = kwargs.get(
-            'temp_dir',
-            tempfile.mkdtemp(prefix='cpac_pip_temp_')
-        )
-        output_dir = kwargs.get(
-            'output_dir',
-            tempfile.mkdtemp(prefix='cpac_pip_output_')
-        )
-        working_dir = kwargs.get(
-            'working_dir',
-            os.getcwd()
-        )
-
-        volumes = self._bind_volume({}, temp_dir, '/scratch', 'rw')
-        volumes = self._bind_volume(volumes, output_dir, '/outputs', 'rw')
-        volumes = self._bind_volume(volumes, working_dir, '/wd', 'rw')
-
-        uid = os.getuid()
-
-        bindings = {
-            'gid': pwd.getpwuid(uid).pw_gid,
-            'mounts': [
-                '{}:{}:{}'.format(
-                    i,
-                    j['bind'],
-                    j['mode']
-                ) for i in volumes.keys() for j in volumes[i]
-            ],
-            'tag': tag,
-            'uid': uid,
-            'volumes': volumes
-        }
-
-        return(bindings)
 
     def _load_logging(self, image, bindings):
         import pandas as pd
