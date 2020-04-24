@@ -17,8 +17,8 @@ before_script:
 script:
   - coverage run --source=cpac setup.py test
 after_success:
-  - bash .travis/update_README_usage.sh
   - if [[ "$COVERAGE" == "true" ]]; then coveralls || echo "failed"; fi
+  - bash .travis/update_README_usage.sh
 after_script:
   - travis-cleanup
 cache:
