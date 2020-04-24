@@ -11,7 +11,7 @@ wait %1
 if [ "$(cat README.rst)" = "$original_README" ]; then
     original_ORIGIN=$(git remote get-url origin)
     git remote remove origin
-    git remote add origin $"https://${GITHUB_PUSH_TOKEN}@"$(read -d @ <<< $(echo $original_ORIGIN | rev); echo $REPLY | rev)
+    git remote add origin $"https://${GITHUB_USERNAME}:${GITHUB_PUSH_TOKEN}@g"$(read -d g <<< $(echo $original_ORIGIN | rev); echo $REPLY | rev)
     git add README.rst
     git commit -m ":books: Update usage from helpstring"
     git push origin $(git rev-parse --abbrev-ref HEAD)
