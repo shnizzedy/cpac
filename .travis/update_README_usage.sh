@@ -8,6 +8,9 @@ tail --lines=+$(read -d : <<< $(less README.rst | grep ".. END USAGE" -n); expr 
 mv tempREADME README.rst
 
 if [ "$(cat README.rst)" = "$original_README" ]; then
+    original_ORIGIN=$(git remote get-url origin)
+    git remote remove origin
+    git remote add origin $"https://${GITHUB_PUSH_TOKEN}@"$(read -d @ <<< $(echo $original_ORIGIN | rev); echo $REPLY | rev)
     git add README.rst
     git commit -m ":books: Update usage from helpstring"
     git push origin $(git rev-parse --abbrev-ref HEAD)
