@@ -25,18 +25,19 @@ Usage
 
 .. code-block:: shell
 
+    cpac --help
+    usage: cpac [-h] [--version] [-v] [-vv] {run,utils} ...
+    
+    cpac: a Python package that wraps C-PAC <http://fcp-indi.github.io>
+    
     positional arguments:
       {run,utils}
-
+    
     optional arguments:
-      -h, --help            show this help message and exit
-      --platform {docker,singularity}
-      --image IMAGE         path to Singularity image file. Will attempt to pull from Singularity Hub or Docker Hub if not provided.
-      --tag TAG             tag of the Docker image to use (eg, "latest" or "nightly"). Ignored if IMAGE also provided.
-      --version             show program's version number and exit
-      -v, --verbose         set loglevel to INFO
-      -vv, --very-verbose   set loglevel to DEBUG
-      --working_dir PATH    working directory
+      -h, --help           show this help message and exit
+      --version            show program's version number and exit
+      -v, --verbose        set loglevel to INFO
+      -vv, --very-verbose  set loglevel to DEBUG
 
 .. END USAGE
 
