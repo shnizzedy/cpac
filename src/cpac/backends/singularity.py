@@ -10,55 +10,72 @@ import copy
 import pwd
 
 from base64 import b64decode, b64encode
-# from docker.types import Mount
-from ..utils import string_types
-from .platform import Backend, Result, FileResult
-
+from itertools import chain
 from spython.main import Client
+from subprocess import CalledProcessError
 from tornado import httpclient
 
+from cpac.backends.platform import Backend
+
+BINDING_MODES = {'r': 'ro', 'w': 'rw', 'rw': 'rw'}
 
 class Singularity(Backend):
 
     def __init__(self, **kwargs):
-        image = kwargs["image"] if "image" in kwargs else None
+        image = kwargs["image"] if "image" in kwargs else "fcpindi/c-pac"
         tag = kwargs["tag"] if "tag" in kwargs else None
         print("Loading Ⓢ Singularity")
-        if image:
-            self.instance = Client.instance(image)
+        if image and os.path.exists(image):
+            self.image = image
         elif tag:
-            self.instance = Client.instance(f"docker://fcpindi/c-pac:{tag}")
+            self.image = f"docker://{image}:{tag}"
         else:
             try:
-                self.instance = Client.instance("shub://FCP-INDI/C-PAC")
-            except:  # pragma: no cover
-            # except docker.errors.APIError:  # pragma: no cover
-                raise "Could not connect to Singularity"
+                self.image = Client.pull(
+                    "shub://FCP-INDI/C-PAC",
+                    pull_folder=os.getcwd()
+                )
+            except:
+                try:
+                    self.image = f"docker://fcpindi/c-pac:latest"
+                except:  # pragma: no cover
+                    raise "Could not connect to Singularity"
+        self.instance = Client.instance(self.image)
+        self.volumes = {}
 
-    def _bind_volume(self, volumes, local, remote, mode):
-        # b = {'bind': remote, 'mode': mode}
-        # if local in volumes:
-        #     volumes[local].append(b)
-        # else:
-        #     volumes[local] = [b]
-        return(volumes)
+    def _bindings_as_option(self):
+        return(
+            ['-B', ','.join((chain.from_iterable([[
+                ':'.join([b for b in [
+                    local,
+                    binding['bind'] if \
+                    local!=binding['bind'] or \
+                    BINDING_MODES[str(binding['mode'])]!='rw' else None,
+                    BINDING_MODES[str(binding['mode'])] if \
+                    BINDING_MODES[str(binding['mode'])]!='rw' else None
+                ] if b is not None]) for binding in self.volumes[local]
+            ] for local in self.volumes])))]
+        )
 
-    def _load_logging(self, image, bindings):
+    def _load_logging(self):
         import pandas as pd
         import textwrap
         from tabulate import tabulate
 
-        t = pd.DataFrame([
-            (i, j['bind'], j['mode']) for i in bindings['volumes'].keys(
-            ) for j in bindings['volumes'][i]
+        t = pd.DataFrame([(
+                i,
+                j['bind'],
+                BINDING_MODES[str(j['mode'])]
+            ) for i in self.bindings['volumes'].keys(
+            ) for j in self.bindings['volumes'][i]
         ])
-        t.columns = ['local', 'Docker', 'mode']
+        t.columns = ['local', 'Singularity', 'mode']
 
         print("")
 
         print(" ".join([
             "Loading Ⓢ",
-            image,
+            self.image,
             "with these directory bindings:"
         ]))
 
@@ -69,94 +86,50 @@ class Singularity(Backend):
 
         print("Logging messages will refer to the Singularity paths.\n")
 
+    def _try_to_stream(self, args, options):
+        try:
+            yield from next(
+                Client.run(
+                    self.instance,
+                    args=args,
+                    options=options,
+                    stream=True,
+                    return_result=True
+                )
+            )
+        except Exception as e:
+            raise(e)
+
     def run(self, flags="", **kwargs):
 
-        bindings = self._set_bindings(**kwargs)
+        self._set_bindings(**kwargs)
+        self._load_logging()
 
-        self._load_logging(image, bindings)
-        print(bindings)
-
-        return()
         [
-            print(o, end="") for o in Client.run(
-                self.instance,
+            print(o, end="") for o in self._try_to_stream(
                 args=" ".join([
                     kwargs['bids_dir'],
                     kwargs['output_dir'],
                     kwargs['level_of_analysis'],
                     flags
                 ]).strip(' '),
-                stream=True,
-                return_result=True
+                options=self._bindings_as_option()
             )
         ]
-
-        # image = ':'.join([
-        #     'fcpindi/c-pac',
-        #     bindings['tag']
-        # ])
-        #
-        # if isinstance(
-        #     kwargs['bids_dir'], str
-        # ) and not kwargs['bids_dir'].startswith('s3://'):
-        #     b = {
-        #         'bind': '/bids_dir',
-        #         'mode': 'ro'
-        #     }
-        #     if kwargs['bids_dir'] in bindings['volumes']:
-        #         bindings['volumes'][kwargs['bids_dir']].append(b)
-        #     else:
-        #         bindings['volumes'][kwargs['bids_dir']] = [b]
-        #     bindings['mounts'].append('/bids_dir:{}:ro'.format(
-        #         kwargs['bids_dir']
-        #     ))
-        # else:
-        #     kwargs['bids_dir'] = str(kwargs['bids_dir'])
-        #
-        # command = [i for i in [
-        #     kwargs['bids_dir'],
-        #     '/outputs',
-        #     kwargs['level_of_analysis'],
-        #     *flags.split(' ')
-        # ] if (i is not None and len(i))]
-        #
-        self._load_logging(image, bindings)
-        #
-        # self._run = DockerRun(self.client.containers.run(
-        #     image,
-        #     command=command,
-        #     detach=True,
-        #     user=':'.join([
-        #         str(bindings['uid']),
-        #         str(bindings['gid'])
-        #     ]),
-        #     volumes=bindings['mounts'],
-        #     working_dir='/wd'
-        # ))
 
     def utils(self, flags="", **kwargs):
 
-        # bindings = self._set_bindings(**kwargs)
+        self._set_bindings(**kwargs)
+        self._load_logging()
 
         [
-            print(o, end="") for o in Client.run(
-                self.instance,
+            print(o, end="") for o in self.self_try_to_stream(
                 args=" ".join([
-                    'bids_dir outputs_dir cli -- utils',
+                    kwargs.get('bids_dir', 'bids_dir'),
+                    kwargs.get('output_dir', 'output_dir'),
+                    'cli -- utils',
                     *flags.split(' ')
                 ]).strip(' '),
-                stream=True,
-                return_result=True
+                options=self._bindings_as_option()
             )
         ]
-
-
-class SingularityRun(object):
-
-    def __init__():
-        pass
-
-    @property
-    def status(self):
-
-        return 'unknown'

@@ -18,15 +18,10 @@ def test_utils_new_settings_template():
     wd = tempfile.mkdtemp(prefix='cpac_pip_temp_')
     f = StringIO()
     with redirect_stdout(f):
-        main([
-            *'cpac utils data_config new_settings_template'.split(' '),
-            '--temp_dir',
-            wd,
-            '--working_dir',
-            wd,
-            '--output_dir',
-            wd
-        ])
+        main((
+            f'cpac --working_dir {wd} --temp_dir {wd} --output_dir {wd} '
+            f'utils data_config new_settings_template'
+        ).split(' '))
 
     o = f.getvalue()
 

@@ -6,7 +6,7 @@ from io import StringIO
 from utils import recursive_remove_dir
 
 
-def test_run_local_bidsdir_data_config():
+def test_run_missing_data_config():
     import tempfile
     from datetime import date
 
@@ -14,12 +14,9 @@ def test_run_local_bidsdir_data_config():
 
     f = StringIO()
     with redirect_stdout(f):
-        main([
-            *'cpac run --data_config_file=data_settings_template.yml'.split(' '),
-            wd,
-            wd,
-            'test_config'
-        ])
+        main((
+            f'cpac --platform docker run {wd} {wd} test_config'
+        ).split(' '))
     o = f.getvalue()
 
     assert('not empty' in o)

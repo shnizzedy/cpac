@@ -37,14 +37,14 @@ def parse_args(args):
 
     parser.add_argument(
         '--image',
-        help='path to Singularity image file. Will attempt to pull from '
-             'Singularity Hub or Docker Hub if not provided.'
+        help='path to Singularity image file OR name of Docker image (eg, '
+             '"fcpindi/c-pac"). Will attempt to pull from Singularity Hub or '
+             'Docker Hub if not provided.'
     )
 
     parser.add_argument(
         '--tag',
         help='tag of the Docker image to use (eg, "latest" or "nightly"). '
-             'Ignored if IMAGE also provided.'
     )
 
     parser.add_argument(
@@ -78,6 +78,20 @@ def parse_args(args):
         metavar="PATH"
     )
 
+    parser.add_argument(
+        '--temp_dir',
+        default='/tmp',
+        help="directory for temporary files",
+        metavar="PATH"
+    )
+
+    parser.add_argument(
+        '--output_dir',
+        default=os.path.join(cwd, 'outputs'),
+        help="directory where output files should be stored",
+        metavar="PATH"
+    )
+
     subparsers = parser.add_subparsers(dest='command')
 
     run_parser = subparsers.add_parser(
@@ -85,19 +99,8 @@ def parse_args(args):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     run_parser.register('action', 'extend', ExtendAction)
-    run_parser.add_argument(
-        '--temp_dir',
-        default='/tmp',
-        help="directory for temporary files",
-        metavar="PATH"
-    )
-    run_parser.add_argument('--address', action='store', type=address)
-    run_parser.add_argument(
-        '--data_config_file',
-        help="YAML file containing the location of the data that is to be "
-             "processed.",
-        metavar="PATH"
-    )
+    # run_parser.add_argument('--address', action='store', type=address)
+
     run_parser.add_argument(
         'bids_dir',
         help="input dataset directory"
@@ -112,6 +115,12 @@ def parse_args(args):
         choices=['participant', 'group', 'test_config']
     )
     run_parser.add_argument(
+        '--data_config_file',
+        help="YAML file containing the location of the data that is to be "
+             "processed.",
+        metavar="PATH"
+    )
+    run_parser.add_argument(
         'extra_args',
         nargs=argparse.REMAINDER,
         help="any C-PAC optional arguments "
@@ -124,18 +133,6 @@ def parse_args(args):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     utils_parser.register('action', 'extend', ExtendAction)
-    utils_parser.add_argument(
-        '--temp_dir',
-        default='/tmp',
-        help="directory for temporary files",
-        metavar="PATH"
-    )
-    utils_parser.add_argument(
-        '--output_dir',
-        default=os.path.join(cwd, 'outputs'),
-        help="directory where output files should be stored",
-        metavar="PATH"
-    )
 
     parsed, extras = parser.parse_known_args(args)
 
@@ -185,7 +182,7 @@ def main(args):
     args.bids_dir = args.bids_dir if hasattr(
         args,
         'bids_dir'
-    ) else None
+    ) else 'bids_dir'
 
     setup_logging(args.loglevel)
 
@@ -202,9 +199,6 @@ def main(args):
             flags=" ".join(args.extra_args),
             **arg_vars
         )
-
-
-
 
 
 def run():
