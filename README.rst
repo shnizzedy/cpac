@@ -29,13 +29,13 @@ Usage
                 [--version] [-v] [-vv] [--working_dir PATH] [--temp_dir PATH]
                 [--output_dir PATH]
                 {run,utils} ...
-
+    
     cpac: a Python package that simplifies using C-PAC <http://fcp-indi.github.io>
     containerized images.
-
+    
     positional arguments:
       {run,utils}
-
+    
     optional arguments:
       -h, --help            show this help message and exit
       --platform {docker,singularity}
