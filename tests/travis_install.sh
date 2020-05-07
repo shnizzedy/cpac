@@ -44,7 +44,6 @@ if [[ "$COVERAGE" == "true" ]]; then
     pip install coverage coveralls
 fi
 
-
 travis-cleanup() {
     printf "Cleaning up environments ... "  # printf avoids new lines
     if [[ "$DISTRIB" == "conda" ]]; then

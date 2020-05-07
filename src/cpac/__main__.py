@@ -19,7 +19,7 @@ class ExtendAction(argparse.Action):
         setattr(namespace, self.dest, items)
 
 
-def address(str):
+def address(str):  # pragma: no cover
     addr, port = str.split(':')
     port = int(port)
     return addr, port
@@ -29,8 +29,11 @@ def parse_args(args):
     cwd = os.getcwd()
 
     parser = argparse.ArgumentParser(
-        description="cpac: a Python package that simplifies using C-PAC "
-                    "<http://fcp-indi.github.io> containerized images."
+        description='cpac: a Python package that simplifies using C-PAC '
+                    '<http://fcp-indi.github.io> containerized images. If no '
+                    'platform nor image is specified, cpac will try Docker '
+                    'first, then try Singularity if Docker fails.',
+        conflict_handler='resolve'
     )
 
     parser.add_argument('--platform', choices=['docker', 'singularity'])
@@ -92,39 +95,47 @@ def parse_args(args):
         metavar="PATH"
     )
 
+    parser.add_argument(
+        '-o', '--container_options',
+        dest='container_options',
+        nargs='+',
+        help="parameters and flags to pass through to Docker or Singularity",
+        metavar="OPT"
+    )
+
     subparsers = parser.add_subparsers(dest='command')
 
     run_parser = subparsers.add_parser(
         'run',
+        add_help=False,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+
+    help_call = '--help' in sys.argv
     run_parser.register('action', 'extend', ExtendAction)
     # run_parser.add_argument('--address', action='store', type=address)
 
-    run_parser.add_argument(
-        'bids_dir',
-        help="input dataset directory"
-    )
-    run_parser.add_argument(
-        'output_dir',
-        default=os.path.join(cwd, 'outputs'),
-        help="directory where output files should be stored"
-    )
-    run_parser.add_argument(
-        'level_of_analysis',
-        choices=['participant', 'group', 'test_config']
-    )
+    if not help_call:
+        # These positional arguments are required unless we're just getting
+        # the helpstring
+        run_parser.add_argument(
+            'bids_dir'
+        )
+        run_parser.add_argument(
+            'output_dir',
+            default=os.path.join(cwd, 'outputs')
+        )
+        run_parser.add_argument(
+            'level_of_analysis',
+            choices=['participant', 'group', 'test_config']
+        )
     run_parser.add_argument(
         '--data_config_file',
-        help="YAML file containing the location of the data that is to be "
-             "processed.",
         metavar="PATH"
     )
     run_parser.add_argument(
         'extra_args',
-        nargs=argparse.REMAINDER,
-        help="any C-PAC optional arguments "
-             "<http://fcp-indi.github.io/docs/user/running>"
+        nargs=argparse.REMAINDER
     )
 
     utils_parser = subparsers.add_parser(
@@ -152,32 +163,59 @@ def setup_logging(loglevel):
 
 def main(args):
     original_args = args
-    command = args[0]
     args = parse_args(args[1:])
 
     if not args.platform and "--platform" not in original_args:
-        try:
-            main([
-                original_args[0],
-                '--platform',
-                'docker',
-                *original_args[1:]
-            ])
-        except Exception as e:
-            main([
-                original_args[0],
-                '--platform',
-                'singularity',
-                *original_args[1:]
-            ])
-        return()
+        if args.image and os.path.exists(args.image):
+            args.platform = 'singularity'
+        else:
+            try:
+                main([
+                    original_args[0],
+                    '--platform',
+                    'docker',
+                    *original_args[1:]
+                ])
+            except Exception:  # pragma: no cover
+                main([
+                    original_args[0],
+                    '--platform',
+                    'singularity',
+                    *original_args[1:]
+                ])
+            return  # pragma: no cover
     else:
         del original_args
 
-    args.data_config_file = args.data_config_file if hasattr(
-        args,
-        'data_config_file'
-    ) else None
+    if any([
+        '--data_config_file' in arg for arg in args.extra_args
+    ]):
+        try:
+            args.data_config_file = args.extra_args[
+                args.extra_args.index('--data_config_file')+1
+            ]
+        except ValueError:
+            try:
+                args.data_config_file = [
+                    arg.split(
+                        '=',
+                        1
+                    )[1] for arg in args.extra_args if arg.startswith(
+                        '--data_config_file='
+                    )
+                ][0]
+            except Exception:  # pragma: no cover
+                raise ValueError(
+                    f"""Something about {[
+                        arg for arg in args.extra_args if
+                        '--data_config_file' in arg
+                    ]} is confusing."""
+                )
+    else:
+        args.data_config_file = args.data_config_file if hasattr(
+            args,
+            'data_config_file'
+        ) else None
 
     args.bids_dir = args.bids_dir if hasattr(
         args,
@@ -187,16 +225,22 @@ def main(args):
     setup_logging(args.loglevel)
 
     arg_vars = vars(args)
-
     if args.command == 'run':
+        if '--help' in arg_vars or '--help' in args.extra_args:
+            pwd = os.getcwd()
+            if arg_vars.get('level_of_analysis') is None:
+                arg_vars['level_of_analysis'] = 'participant'
+            for arg in ['output_dir', 'bids_dir']:
+                if arg_vars.get(arg) is None:
+                    arg_vars[arg] = pwd
         Backends(**arg_vars).run(
-            flags=" ".join(args.extra_args),
+            flags=' '.join(args.extra_args),
             **arg_vars
         )
 
     if args.command == 'utils':
         Backends(**arg_vars).utils(
-            flags=" ".join(args.extra_args),
+            flags=' '.join(args.extra_args),
             **arg_vars
         )
 

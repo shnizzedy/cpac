@@ -1,58 +1,61 @@
 import os
-import time
-import json
-import glob
-import shutil
-import tempfile
-import hashlib
-import uuid
-import copy
-import pwd
 
-from base64 import b64decode, b64encode
 from itertools import chain
 from spython.main import Client
 from subprocess import CalledProcessError
-from tornado import httpclient
 
 from cpac.backends.platform import Backend
 
-BINDING_MODES = {'r': 'ro', 'w': 'rw', 'rw': 'rw'}
+BINDING_MODES = {'ro': 'ro', 'w': 'rw', 'rw': 'rw'}
+
 
 class Singularity(Backend):
-
     def __init__(self, **kwargs):
-        image = kwargs["image"] if "image" in kwargs else "fcpindi/c-pac"
+        image = kwargs["image"] if "image" in kwargs else None
         tag = kwargs["tag"] if "tag" in kwargs else None
+        pwd = os.getcwd()
+        if kwargs.get("working_dir") is not None:
+            pwd = kwargs["working_dir"]
+            os.chdir(pwd)
         print("Loading Ⓢ Singularity")
-        if image and os.path.exists(image):
+        if image and isinstance(image, str) and os.path.exists(image):
             self.image = image
-        elif tag:
-            self.image = f"docker://{image}:{tag}"
-        else:
+        elif tag and isinstance(tag, str):  # pragma: no cover
+            self.image = Client.pull(
+                f"docker://{image}:{tag}",
+                pull_folder=os.getcwd()
+            )
+        else:  # pragma: no cover
             try:
                 self.image = Client.pull(
                     "shub://FCP-INDI/C-PAC",
                     pull_folder=os.getcwd()
                 )
-            except:
+            except Exception:
                 try:
-                    self.image = f"docker://fcpindi/c-pac:latest"
-                except:  # pragma: no cover
-                    raise "Could not connect to Singularity"
+                    self.image = Client.pull(
+                        f"docker://fcpindi/c-pac:latest",
+                        pull_folder=os.getcwd()
+                    )
+                except Exception:
+                    raise OSError("Could not connect to Singularity")
         self.instance = Client.instance(self.image)
         self.volumes = {}
+        self.options = list(chain.from_iterable(kwargs[
+            "container_options"
+        ])) if bool(kwargs.get("container_options")) else []
+        self._set_bindings(**kwargs)
 
     def _bindings_as_option(self):
-        return(
+        self.options += (
             ['-B', ','.join((chain.from_iterable([[
                 ':'.join([b for b in [
                     local,
-                    binding['bind'] if \
-                    local!=binding['bind'] or \
-                    BINDING_MODES[str(binding['mode'])]!='rw' else None,
-                    BINDING_MODES[str(binding['mode'])] if \
-                    BINDING_MODES[str(binding['mode'])]!='rw' else None
+                    binding['bind'] if
+                    local != binding['bind'] or
+                    BINDING_MODES[str(binding['mode'])] != 'rw' else None,
+                    BINDING_MODES[str(binding['mode'])] if
+                    BINDING_MODES[str(binding['mode'])] != 'rw' else None
                 ] if b is not None]) for binding in self.volumes[local]
             ] for local in self.volumes])))]
         )
@@ -70,66 +73,51 @@ class Singularity(Backend):
             ) for j in self.bindings['volumes'][i]
         ])
         t.columns = ['local', 'Singularity', 'mode']
-
-        print("")
-
         print(" ".join([
             "Loading Ⓢ",
             self.image,
             "with these directory bindings:"
         ]))
-
         print(textwrap.indent(
             tabulate(t, headers='keys', showindex=False),
             '  '
         ))
-
-        print("Logging messages will refer to the Singularity paths.\n")
-
-    def _try_to_stream(self, args, options):
-        try:
-            yield from next(
-                Client.run(
-                    self.instance,
-                    args=args,
-                    options=options,
-                    stream=True,
-                    return_result=True
-                )
-            )
-        except Exception as e:
-            raise(e)
+        print("Logging messages will refer to the Singularity paths.")
 
     def run(self, flags="", **kwargs):
-
-        self._set_bindings(**kwargs)
         self._load_logging()
-
-        [
-            print(o, end="") for o in self._try_to_stream(
-                args=" ".join([
-                    kwargs['bids_dir'],
-                    kwargs['output_dir'],
-                    kwargs['level_of_analysis'],
-                    flags
-                ]).strip(' '),
-                options=self._bindings_as_option()
-            )
-        ]
+        for o in Client.run(
+            self.instance,
+            args=" ".join([
+                kwargs['bids_dir'],
+                kwargs['output_dir'],
+                kwargs['level_of_analysis'],
+                flags
+            ]).strip(' '),
+            options=self.options,
+            stream=True,
+            return_result=True
+        ):
+            try:
+                print(o)
+            except CalledProcessError as e:  # pragma: no cover
+                print(e)
 
     def utils(self, flags="", **kwargs):
-
-        self._set_bindings(**kwargs)
         self._load_logging()
-
-        [
-            print(o, end="") for o in self.self_try_to_stream(
-                args=" ".join([
-                    kwargs.get('bids_dir', 'bids_dir'),
-                    kwargs.get('output_dir', 'output_dir'),
-                    'cli -- utils',
-                    *flags.split(' ')
-                ]).strip(' '),
-                options=self._bindings_as_option()
-            )
-        ]
+        for o in Client.run(
+            self.instance,
+            args=" ".join([
+                kwargs.get('bids_dir', 'bids_dir'),
+                kwargs.get('output_dir', 'output_dir'),
+                'cli -- utils',
+                *flags.split(' ')
+            ]).strip(' '),
+            options=self.options,
+            stream=True,
+            return_result=True
+        ):
+            try:
+                print(o)
+            except CalledProcessError as e:  # pragma: no cover
+                print(e)

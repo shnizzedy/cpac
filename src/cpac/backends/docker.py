@@ -1,31 +1,36 @@
-import os
-import time
-import json
-import glob
 import docker
-import shutil
-import tempfile
-import hashlib
-import uuid
-import copy
-import pwd
 
-from base64 import b64decode, b64encode
-from docker.types import Mount
-from tornado import httpclient
+from cpac.backends.platform import Backend
 
-from cpac.backends.platform import Backend, Result, FileResult
 
 class Docker(Backend):
-
     def __init__(self, **kwargs):
         print("Loading 🐳 Docker")
         self.client = docker.from_env()
         try:
             self.client.ping()
         except docker.errors.APIError:  # pragma: no cover
-            raise "Could not connect to Docker"
+            raise OSError("Could not connect to Docker")
         self.volumes = {}
+        self._set_bindings(**kwargs)
+        self.docker_kwargs = {}
+        if isinstance(kwargs['container_options'], list):
+            for opt in kwargs['container_options']:
+                if '=' in opt or ' ' in opt:
+                    delimiter = min([
+                        i for i in [
+                            opt.find('='), opt.find(' ')
+                        ] if i > 0
+                    ])
+                    k = opt[:delimiter].lstrip('-').replace('-', '_')
+                    v = opt[delimiter+1:].strip('"').strip("'")
+                    if k in self.docker_kwargs:
+                        if isinstance(self.docker_kwargs[k], list):
+                            self.docker_kwargs[k].append(v)
+                        else:
+                            self.docker_kwargs[k] = [self.docker_kwargs[k], v]
+                    else:
+                        self.docker_kwargs[k] = v
 
     def _load_logging(self, image):
         import pandas as pd
@@ -37,38 +42,27 @@ class Docker(Backend):
             ) for j in self.bindings['volumes'][i]
         ])
         t.columns = ['local', 'Docker', 'mode']
-
-        print("")
-
         print(" ".join([
             "Loading 🐳",
             image,
             "with these directory bindings:"
         ]))
-
         print(textwrap.indent(
             tabulate(t, headers='keys', showindex=False),
             '  '
         ))
-
         print("Logging messages will refer to the Docker paths.\n")
 
     def run(self, flags="", **kwargs):
-
-        self._set_bindings(**kwargs)
-
         kwargs['command'] = [i for i in [
             kwargs['bids_dir'],
             kwargs['output_dir'],
             kwargs['level_of_analysis'],
             *flags.split(' ')
         ] if (i is not None and len(i))]
-
         self._execute(**kwargs)
 
     def utils(self, flags="", **kwargs):
-        self._set_bindings(**kwargs)
-
         kwargs['command'] = [i for i in [
             kwargs.get('bids_dir', kwargs.get('working_dir', '/tmp')),
             kwargs.get('output_dir', '/outputs'),
@@ -77,16 +71,16 @@ class Docker(Backend):
             'utils',
             *flags.split(' ')
         ] if (i is not None and len(i))]
-
         self._execute(**kwargs)
-
 
     def _execute(self, command, **kwargs):
         image = ':'.join([
             kwargs['image'] if kwargs.get(
                 'image'
             ) is not None else 'fcpindi/c-pac',
-            self.bindings['tag']
+            self.bindings['tag'] if self.bindings.get(
+                'tag'
+            ) is not None else 'latest'
         ])
 
         self._load_logging(image)
@@ -100,7 +94,8 @@ class Docker(Backend):
                 str(self.bindings['gid'])
             ]),
             volumes=self.bindings['mounts'],
-            working_dir=kwargs.get('working_dir', '/tmp')
+            working_dir=kwargs.get('working_dir', '/tmp'),
+            **self.docker_kwargs
         ))
 
 
@@ -119,7 +114,7 @@ class DockerRun(object):
     def status(self):
         try:
             self.container.reload()
-        except Exception as e:
+        except Exception:
             return 'stopped'
         status = self.container.status
         status_map = {

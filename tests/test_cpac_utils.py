@@ -1,32 +1,37 @@
 import os
-from contextlib import redirect_stdout
-from cpac.__main__ import main
-from io import StringIO
-from utils import recursive_remove_dir
+import pytest
+import sys
 
-def test_utils_help():
-    f = StringIO()
-    with redirect_stdout(f):
-        main('cpac utils --help'.split(' '))
-    o = f.getvalue()
+from unittest import mock
 
-    assert "Docker" in o
-    assert "COMMAND" in o
+from cpac.__main__ import run
+from CONSTANTS import SINGULARITY_OPTION
+PLATFORM_ARGS = ['--platform docker', SINGULARITY_OPTION()]
 
-def test_utils_new_settings_template():
-    import tempfile
-    wd = tempfile.mkdtemp(prefix='cpac_pip_temp_')
-    f = StringIO()
-    with redirect_stdout(f):
-        main((
-            f'cpac --working_dir {wd} --temp_dir {wd} --output_dir {wd} '
-            f'utils data_config new_settings_template'
-        ).split(' '))
 
-    o = f.getvalue()
+@pytest.mark.parametrize('args,platform', [
+    (PLATFORM_ARGS[0], 'docker'),
+    (PLATFORM_ARGS[1], 'singularity'),
+    ('', '')
+])
+def test_utils_help(args, capsys, platform):
+    argv = ['cpac', *args.split(' '), 'utils', '--help']
+    with mock.patch.object(sys, 'argv', [arg for arg in argv if len(arg)]):
+        run()
+        captured = capsys.readouterr()
+        if len(platform):
+            assert platform.title() in captured.out
+        assert 'COMMAND' in captured.out
 
-    template_path = os.path.join(wd, 'data_settings.yml')
 
-    assert(os.path.exists(template_path))
-
-    recursive_remove_dir(wd)
+@pytest.mark.parametrize('args', PLATFORM_ARGS)
+def test_utils_new_settings_template(args, tmp_path):
+    wd = tmp_path
+    argv = (
+        f'cpac {args} --working_dir {wd} --temp_dir {wd} --output_dir {wd} '
+        f'utils data_config new_settings_template'
+    ).split(' ')
+    with mock.patch.object(sys, 'argv', argv):
+        run()
+        template_path = os.path.join(wd, 'data_settings.yml')
+        assert(os.path.exists(template_path))

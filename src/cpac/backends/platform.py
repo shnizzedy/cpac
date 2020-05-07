@@ -2,12 +2,12 @@ import os
 import pwd
 import tempfile
 
-from cpac.utils import Permission_mode
+from cpac.utils import Locals_to_bind, Permission_mode
+
 
 class Backend(object):
-
     def __init__(self):
-        pass
+        pass  # pragma: no cover
 
     def start(self, pipeline_config, subject_config):
         raise NotImplementedError()
@@ -20,7 +20,9 @@ class Backend(object):
                 for i, binding in enumerate(self.volumes[local]):
                     self.volumes[local][i] = {
                         'bind': remote,
-                        'mode': max([self.volumes[local][i]['mode'], b['mode']])
+                        'mode': max([
+                            self.volumes[local][i]['mode'], b['mode']
+                        ])
                     }
             else:
                 self.volumes[local].append(b)
@@ -29,12 +31,15 @@ class Backend(object):
 
     def _prep_binding(self, binding_path_local, binding_path_remote):
         binding_path_local = os.path.abspath(binding_path_local)
-        os.makedirs(os.path.dirname(binding_path_local), exist_ok=True)
-        return(binding_path_local, os.path.abspath(binding_path_remote))
+        os.makedirs(binding_path_local, exist_ok=True)
+        return(
+            os.path.realpath(binding_path_local),
+            os.path.abspath(binding_path_remote)
+        )
 
     def _set_bindings(self, **kwargs):
         tag = kwargs.get('tag', None)
-        tag = tag if isinstance(tag, str) else 'latest'
+        tag = tag if isinstance(tag, str) else None
 
         temp_dir = kwargs.get(
             'temp_dir',
@@ -49,9 +54,35 @@ class Backend(object):
             os.getcwd()
         )
 
+        for f in ['pipeline_file', 'group_file']:
+            if f in kwargs and isinstance(kwargs, str) and os.path.exists(
+                kwargs[f]
+            ):
+                d = os.path.dirname(kwargs[f])
+                self._bind_volume(d, d, 'r')
+        if 'data_config_file' in kwargs and isinstance(
+            kwargs['data_config_file'], str
+        ) and os.path.exists(kwargs['data_config_file']):
+            dc_dir = os.path.dirname(kwargs['data_config_file'])
+            self._bind_volume(dc_dir, dc_dir, 'r')
+            locals_from_data_config = Locals_to_bind()
+            locals_from_data_config.from_config_file(
+                kwargs['data_config_file']
+            )
+            for local in locals_from_data_config.locals:
+                self._bind_volume(local, local, 'r')
         self._bind_volume(temp_dir, temp_dir, 'rw')
         self._bind_volume(output_dir, output_dir, 'rw')
         self._bind_volume(working_dir, working_dir, 'rw')
+        for d in ['bids_dir', 'output_dir']:
+            if d in kwargs and isinstance(kwargs[d], str) and os.path.exists(
+                kwargs[d]
+            ):
+                self._bind_volume(
+                    kwargs[d],
+                    kwargs[d],
+                    'rw' if d == 'output_dir' else 'r'
+                )
 
         uid = os.getuid()
 

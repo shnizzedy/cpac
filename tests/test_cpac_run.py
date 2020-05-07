@@ -1,38 +1,35 @@
 import os
-import subprocess
-from contextlib import redirect_stdout
-from cpac.__main__ import main
-from io import StringIO
-from utils import recursive_remove_dir
+import pytest
+import sys
 
-def test_run_help():
-    o = subprocess.getoutput('cpac run --help')
+from datetime import date
+from unittest import mock
 
-    assert "participant" in o
+from cpac.__main__ import run
+from CONSTANTS import SINGULARITY_OPTION
 
-def test_run_test_config():
-    import tempfile
-    from datetime import date
+PLATFORM_ARGS = ['--platform docker', SINGULARITY_OPTION()]
 
-    wd = tempfile.mkdtemp(prefix='cpac_pip_temp_')
 
-    f = StringIO()
-    with redirect_stdout(f):
-        main((
-            'cpac run '
-            f's3://fcp-indi/data/Projects/ABIDE/RawDataBIDS/NYU {wd} '
-            'test_config --participant_ndx=2'
-        ).split(' '))
-    o = f.getvalue()
+@pytest.mark.parametrize('args', PLATFORM_ARGS)
+def test_run_help(args, capsys):
+    argv = ['cpac', *args.split(' '), 'run', '--help']
+    with mock.patch.object(sys, 'argv', argv):
+        run()
+        captured = capsys.readouterr()
+        assert 'participant' in captured.out or 'participant' in captured.err
 
-    print(wd)
 
-    print(os.listdir(wd))
-
-    print(date.today().isoformat())
-
-    assert(
-        any([date.today().isoformat() in fp for fp in os.listdir(wd)])
-    )
-
-    recursive_remove_dir(wd)
+@pytest.mark.parametrize('args', PLATFORM_ARGS)
+def test_run_test_config(args, tmp_path):
+    wd = tmp_path
+    argv = (
+        f'cpac {args} run '
+        f's3://fcp-indi/data/Projects/ABIDE/RawDataBIDS/NYU {wd} '
+        'test_config --participant_ndx=2'
+    ).split(' ')
+    with mock.patch.object(sys, 'argv', argv):
+        run()
+        assert(
+            any([date.today().isoformat() in fp for fp in os.listdir(wd)])
+        )
