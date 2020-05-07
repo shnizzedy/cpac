@@ -19,7 +19,7 @@ export PATH="${GOPATH}/bin:${PATH}"
 mkdir -p "${GOPATH}/src/github.com/sylabs"
 cd "${GOPATH}/src/github.com/sylabs"
 
-git clone -b 2.6.1 https://github.com/sylabs/singularity
+git clone -b 2.0 https://github.com/sylabs/singularity
 cd singularity
 # These are the Singularity 2 installation commands:
 ./autogen.sh
