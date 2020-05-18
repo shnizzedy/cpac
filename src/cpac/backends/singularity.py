@@ -3,7 +3,6 @@ import os
 from itertools import chain
 from spython.main import Client
 from subprocess import CalledProcessError
-from sys import exc_info
 
 from cpac.backends.platform import Backend
 
